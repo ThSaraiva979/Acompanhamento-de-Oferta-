@@ -729,31 +729,36 @@ td strong {
 .filter-select-menu {
   position: absolute;
   z-index: 50;
-  top: calc(100% + 7px);
+  top: calc(100% + 8px);
   left: 0;
   width: 100%;
   min-width: 190px;
-  padding: 6px;
-  border: 1px solid #e5e8ef;
-  border-radius: 12px;
-  background: #fff;
-  box-shadow: 0 14px 36px #1118271a;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  padding: 4px 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .filter-select-option {
   width: 100%;
   min-height: 38px;
   border: 0;
-  border-radius: 8px;
-  background: transparent;
+  border-radius: 9px;
+  background: #fff;
   color: #4f5968;
-  padding: 9px 10px;
+  padding: 9px 11px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   text-align: left;
   font-size: 13px;
+  box-shadow: 0 5px 16px #1118270d;
 }
 
 .filter-select-option:hover {
@@ -765,6 +770,7 @@ td strong {
   background: #eef2ff;
   color: #4f46e5;
   font-weight: 650;
+  box-shadow: 0 5px 16px #4f46e512;
 }
 
 .filter-select-option svg {
