@@ -15,6 +15,7 @@ import {
   Tag,
   Upload,
   CheckCircle2,
+  Check,
 } from 'lucide-react'
 
 type Status = 'ATIVA' | 'BREVE' | 'ENCERRADA'
@@ -363,8 +364,22 @@ function PromotionPanel({
           <Search size={18} />
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar por código ou produto..." />
         </div>
-        <Select value={store} setValue={setStore} options={stores} placeholder="Todas as lojas" />
-        <Select value={status} setValue={setStatus} options={['ATIVA', 'BREVE', 'ENCERRADA']} placeholder="Todos os status" />
+        <Select
+          value={store}
+          setValue={setStore}
+          options={stores.map((item) => ({ value: item, label: item }))}
+          placeholder="Todas as lojas"
+        />
+        <Select
+          value={status}
+          setValue={setStatus}
+          options={[
+            { value: 'ATIVA', label: 'Ativas' },
+            { value: 'BREVE', label: 'Em breve' },
+            { value: 'ENCERRADA', label: 'Encerradas' },
+          ]}
+          placeholder="Todos os status"
+        />
       </div>
 
       {analytics && (
@@ -573,6 +588,8 @@ function Stat({ icon, value, label }: { icon: ReactNode; value: string; label: s
   )
 }
 
+type SelectOption = { value: string; label: string }
+
 function Select({
   value,
   setValue,
@@ -581,19 +598,64 @@ function Select({
 }: {
   value: string
   setValue: (value: string) => void
-  options: string[]
+  options: SelectOption[]
   placeholder: string
 }) {
+  const [open, setOpen] = useState(false)
+  const selected = options.find((option) => option.value === value)
+
   return (
-    <label className="select">
-      <select value={value} onChange={(e) => setValue(e.target.value)}>
-        <option value="">{placeholder}</option>
-        {options.map((option) => (
-          <option key={option}>{option}</option>
-        ))}
-      </select>
-      <ChevronDown size={16} />
-    </label>
+    <div
+      className={`filter-select ${open ? 'open' : ''}`}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setOpen(false)
+      }}
+    >
+      <button
+        type="button"
+        className="filter-select-trigger"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') setOpen(false)
+        }}
+      >
+        <span>{selected?.label ?? placeholder}</span>
+        <ChevronDown size={16} />
+      </button>
+
+      {open && (
+        <div className="filter-select-menu" role="listbox" aria-label={placeholder}>
+          <button
+            type="button"
+            className={!value ? 'filter-select-option selected' : 'filter-select-option'}
+            onClick={() => {
+              setValue('')
+              setOpen(false)
+            }}
+          >
+            <span>{placeholder}</span>
+            {!value && <Check size={15} />}
+          </button>
+
+          {options.map((option) => (
+            <button
+              type="button"
+              key={option.value}
+              className={value === option.value ? 'filter-select-option selected' : 'filter-select-option'}
+              onClick={() => {
+                setValue(option.value)
+                setOpen(false)
+              }}
+            >
+              <span>{option.label}</span>
+              {value === option.value && <Check size={15} />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }
 
