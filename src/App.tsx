@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import * as XLSX from 'xlsx'
 import {
   BarChart3,
@@ -16,6 +16,8 @@ import {
   Upload,
   CheckCircle2,
   Check,
+  Moon,
+  Sun,
 } from 'lucide-react'
 
 type Status = 'ATIVA' | 'BREVE' | 'ENCERRADA'
@@ -57,7 +59,16 @@ function App() {
   const [status, setStatus] = useState('')
   const [message, setMessage] = useState('')
   const [compact, setCompact] = useState(false)
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    const saved = localStorage.getItem('theme')
+    return saved === 'dark' ? 'dark' : 'light'
+  })
   const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme
+    localStorage.setItem('theme', theme)
+  }, [theme])
 
   const filtered = useMemo(
     () =>
@@ -186,17 +197,29 @@ function App() {
             <p>{subtitle[tab]}</p>
           </div>
 
-          <button
-            type="button"
-            className="primary"
-            onClick={() => {
-              setTab('importar')
-              setMessage('')
-            }}
-          >
-            <Upload size={17} />
-            Importar planilha
-          </button>
+          <div className="header-actions">
+            <button
+              type="button"
+              className="theme-toggle"
+              aria-label={theme === 'light' ? 'Ativar modo escuro' : 'Ativar modo claro'}
+              title={theme === 'light' ? 'Ativar modo escuro' : 'Ativar modo claro'}
+              onClick={() => setTheme((current) => (current === 'light' ? 'dark' : 'light'))}
+            >
+              {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
+            </button>
+
+            <button
+              type="button"
+              className="primary"
+              onClick={() => {
+                setTab('importar')
+                setMessage('')
+              }}
+            >
+              <Upload size={17} />
+              Importar planilha
+            </button>
+          </div>
         </header>
 
         {tab === 'dashboard' && (
