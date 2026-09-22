@@ -312,6 +312,35 @@ function PromotionPanel({
   setStatus: (value: string) => void
   stores: string[]
 }) {
+  const [analytics, setAnalytics] = useState(false)
+
+  const statusSummary = (['ATIVA', 'BREVE', 'ENCERRADA'] as Status[]).map((item) => ({
+    label: item,
+    value: filtered.filter((p) => p.status === item).length,
+  }))
+
+  const storeSummary = stores
+    .map((item) => ({
+      label: item,
+      value: filtered.filter((p) => p.store === item).length,
+    }))
+    .filter((item) => item.value > 0)
+    .sort((a, b) => b.value - a.value)
+
+  const prices = filtered.map((p) => parseMoney(p.price)).filter((value) => value > 0)
+  const discounts = filtered
+    .map((p) => {
+      const oldPrice = parseMoney(p.oldPrice)
+      const promoPrice = parseMoney(p.price)
+      return oldPrice > 0 && promoPrice > 0 && oldPrice > promoPrice ? ((oldPrice - promoPrice) / oldPrice) * 100 : 0
+    })
+    .filter((value) => value > 0)
+
+  const averagePrice = prices.length ? prices.reduce((sum, value) => sum + value, 0) / prices.length : 0
+  const averageDiscount = discounts.length ? discounts.reduce((sum, value) => sum + value, 0) / discounts.length : 0
+  const maxStatus = Math.max(1, ...statusSummary.map((item) => item.value))
+  const maxStore = Math.max(1, ...storeSummary.map((item) => item.value))
+
   return (
     <section className="panel">
       <div className="panel-head">
@@ -319,9 +348,13 @@ function PromotionPanel({
           <h2>Promoções</h2>
           <span>{filtered.length} registros exibidos</span>
         </div>
-        <button type="button" className="ghost">
+        <button
+          type="button"
+          className={analytics ? 'ghost analytics-active' : 'ghost'}
+          onClick={() => setAnalytics((current) => !current)}
+        >
           <BarChart3 size={16} />
-          Visão analítica
+          {analytics ? 'Ocultar análise' : 'Visão analítica'}
         </button>
       </div>
 
@@ -334,9 +367,96 @@ function PromotionPanel({
         <Select value={status} setValue={setStatus} options={['ATIVA', 'BREVE', 'ENCERRADA']} placeholder="Todos os status" />
       </div>
 
+      {analytics && (
+        <div className="analytics-view">
+          <div className="analytics-kpis">
+            <div className="analytics-kpi">
+              <span>Registros analisados</span>
+              <strong>{filtered.length}</strong>
+            </div>
+            <div className="analytics-kpi">
+              <span>Preço médio promocional</span>
+              <strong>{averagePrice ? formatMoney(averagePrice) : '—'}</strong>
+            </div>
+            <div className="analytics-kpi">
+              <span>Desconto médio</span>
+              <strong>{averageDiscount ? `${averageDiscount.toFixed(1)}%` : '—'}</strong>
+            </div>
+            <div className="analytics-kpi">
+              <span>Lojas no filtro</span>
+              <strong>{new Set(filtered.map((p) => p.store)).size}</strong>
+            </div>
+          </div>
+
+          <div className="analytics-grid">
+            <div className="analytics-card">
+              <div className="analytics-card-head">
+                <div>
+                  <h3>Status das promoções</h3>
+                  <p>Distribuição dos registros exibidos</p>
+                </div>
+              </div>
+              <div className="bar-list">
+                {statusSummary.map((item) => (
+                  <div className="bar-row" key={item.label}>
+                    <div className="bar-row-top">
+                      <span>{item.label === 'BREVE' ? 'Vencendo em breve' : item.label === 'ATIVA' ? 'Ativas' : 'Encerradas'}</span>
+                      <b>{item.value}</b>
+                    </div>
+                    <div className="bar-track">
+                      <div
+                        className={`bar-fill status-${item.label.toLowerCase()}`}
+                        style={{ width: `${(item.value / maxStatus) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="analytics-card">
+              <div className="analytics-card-head">
+                <div>
+                  <h3>Promoções por loja</h3>
+                  <p>Quantidade por unidade no filtro atual</p>
+                </div>
+              </div>
+              <div className="bar-list">
+                {storeSummary.length ? (
+                  storeSummary.map((item) => (
+                    <div className="bar-row" key={item.label}>
+                      <div className="bar-row-top">
+                        <span>{item.label}</span>
+                        <b>{item.value}</b>
+                      </div>
+                      <div className="bar-track">
+                        <div className="bar-fill store-bar" style={{ width: `${(item.value / maxStore) * 100}%` }} />
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="analytics-empty">Nenhum dado disponível para os filtros atuais.</div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <Table rows={filtered} />
     </section>
   )
+}
+
+function parseMoney(value: string) {
+  if (!value) return 0
+  const cleaned = value.replace(/[^0-9,.-]/g, '').replace(/\./g, '').replace(',', '.')
+  const parsed = Number(cleaned)
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+function formatMoney(value: number) {
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value)
 }
 
 function Lojas({ data, stores }: { data: Promotion[]; stores: string[] }) {
