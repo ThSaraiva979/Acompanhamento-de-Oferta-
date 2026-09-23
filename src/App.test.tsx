@@ -52,3 +52,25 @@ describe('navegação principal', () => {
     expect(screen.getByRole('heading', { name: 'Promoções', level: 1 })).toBeTruthy()
   })
 })
+
+
+describe('indicadores de pricing no dashboard', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    document.documentElement.removeAttribute('data-theme')
+  })
+
+  test('resume desconto, concentração e próximas promoções', () => {
+    render(<App />)
+
+    expect(screen.getByText('Desconto médio')).toBeTruthy()
+    expect(screen.getByText('24.2%')).toBeTruthy()
+
+    const summary = screen.getByRole('region', { name: 'Resumo estratégico' })
+    expect(summary.textContent).toContain('Maior desconto')
+    expect(summary.textContent).toContain('30.8%')
+    expect(summary.textContent).toContain('Loja Centro')
+    expect(summary.textContent).toContain('2 promoções')
+    expect(summary.textContent).toContain('1 promoção em breve')
+  })
+})
