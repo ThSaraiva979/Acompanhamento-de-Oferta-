@@ -25,3 +25,27 @@ describe('alternância de tema', () => {
     expect(screen.getByRole('button', { name: /ativar modo claro/i })).toBeTruthy()
   })
 })
+
+describe('navegação principal', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    document.documentElement.removeAttribute('data-theme')
+  })
+
+  test('expõe semanticamente a página ativa ao navegar', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    const overview = screen.getByRole('button', { name: 'Visão geral' })
+    const promotions = screen.getByRole('button', { name: 'Promoções' })
+
+    expect(overview).toHaveAttribute('aria-current', 'page')
+    expect(promotions).not.toHaveAttribute('aria-current')
+
+    await user.click(promotions)
+
+    expect(promotions).toHaveAttribute('aria-current', 'page')
+    expect(overview).not.toHaveAttribute('aria-current')
+    expect(screen.getByRole('heading', { name: 'Promoções', level: 1 })).toBeTruthy()
+  })
+})
