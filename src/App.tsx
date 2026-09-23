@@ -172,7 +172,6 @@ function App() {
               key={id}
               type="button"
               className={tab === id ? 'active' : ''}
-              aria-current={tab === id ? 'page' : undefined}
               onClick={() => {
                 setTab(id)
                 setMessage('')
