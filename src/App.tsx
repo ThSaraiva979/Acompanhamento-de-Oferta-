@@ -18,6 +18,7 @@ import {
   Check,
   Moon,
   Sun,
+  Percent,
 } from 'lucide-react'
 
 type Status = 'ATIVA' | 'BREVE' | 'ENCERRADA'
@@ -84,6 +85,32 @@ function App() {
   const stores = useMemo(() => Array.from(new Set(data.map((p) => p.store))), [data])
   const active = data.filter((p) => p.status === 'ATIVA').length
   const soon = data.filter((p) => p.status === 'BREVE').length
+  const productCount = useMemo(() => new Set(data.map((p) => p.code)).size, [data])
+
+  const pricingSummary = useMemo(() => {
+    const discounted = data
+      .map((promotion) => ({ promotion, discount: promotionDiscount(promotion) }))
+      .filter((item) => item.discount > 0)
+
+    const averageDiscount = discounted.length
+      ? discounted.reduce((sum, item) => sum + item.discount, 0) / discounted.length
+      : 0
+
+    const bestDiscount = discounted.reduce<(typeof discounted)[number] | null>(
+      (best, item) => (!best || item.discount > best.discount ? item : best),
+      null,
+    )
+
+    const topStore = stores
+      .map((name) => ({ name, count: data.filter((promotion) => promotion.store === name).length }))
+      .sort((a, b) => b.count - a.count)[0]
+
+    return {
+      averageDiscount,
+      bestDiscount,
+      topStore,
+    }
+  }, [data, stores])
 
   const title: Record<Tab, string> = {
     dashboard: 'Visão geral',
@@ -95,7 +122,7 @@ function App() {
   }
 
   const subtitle: Record<Tab, string> = {
-    dashboard: 'Acompanhe suas promoções de forma simples e visual.',
+    dashboard: 'Acompanhe descontos, concentração e desempenho das suas promoções.',
     promocoes: 'Consulte, filtre e acompanhe todas as ofertas.',
     lojas: 'Visão consolidada das lojas participantes.',
     vigencias: 'Visualize as ofertas organizadas por período.',
@@ -227,10 +254,22 @@ function App() {
           <>
             <section className="stats">
               <Stat icon={<Tag />} value={String(active)} label="Promoções ativas" />
-              <Stat icon={<ShoppingBag />} value={String(new Set(data.map((p) => p.code)).size)} label="Produtos em oferta" />
+              <Stat icon={<ShoppingBag />} value={String(productCount)} label="Produtos em oferta" />
+              <Stat
+                icon={<Percent />}
+                value={pricingSummary.averageDiscount ? `${pricingSummary.averageDiscount.toFixed(1)}%` : '—'}
+                label="Desconto médio"
+              />
               <Stat icon={<Store />} value={String(stores.length)} label="Lojas participantes" />
-              <Stat icon={<Clock3 />} value={String(soon)} label="Vencendo em breve" />
             </section>
+
+            <StrategicSummary
+              bestDiscount={pricingSummary.bestDiscount?.discount ?? 0}
+              bestDiscountProduct={pricingSummary.bestDiscount?.promotion.name ?? 'Sem referência'}
+              topStoreName={pricingSummary.topStore?.name ?? 'Sem referência'}
+              topStoreCount={pricingSummary.topStore?.count ?? 0}
+              soon={soon}
+            />
 
             <PromotionPanel
               filtered={filtered}
@@ -315,6 +354,61 @@ function App() {
         )}
       </main>
     </div>
+  )
+}
+
+function StrategicSummary({
+  bestDiscount,
+  bestDiscountProduct,
+  topStoreName,
+  topStoreCount,
+  soon,
+}: {
+  bestDiscount: number
+  bestDiscountProduct: string
+  topStoreName: string
+  topStoreCount: number
+  soon: number
+}) {
+  return (
+    <section className="strategic-summary" aria-label="Resumo estratégico">
+      <div className="strategic-summary-head">
+        <div>
+          <span className="eyebrow">Pricing intelligence</span>
+          <h2>Resumo estratégico</h2>
+          <p>Leitura rápida dos dados carregados para apoiar a análise das ofertas.</p>
+        </div>
+      </div>
+
+      <div className="strategic-insights">
+        <article className="insight-card">
+          <div className="insight-icon"><Percent size={18} /></div>
+          <div>
+            <span>Maior desconto</span>
+            <strong>{bestDiscount ? `${bestDiscount.toFixed(1)}%` : '—'}</strong>
+            <small>{bestDiscountProduct}</small>
+          </div>
+        </article>
+
+        <article className="insight-card">
+          <div className="insight-icon"><Store size={18} /></div>
+          <div>
+            <span>Maior concentração</span>
+            <strong>{topStoreName}</strong>
+            <small>{topStoreCount} {topStoreCount === 1 ? 'promoção' : 'promoções'}</small>
+          </div>
+        </article>
+
+        <article className="insight-card">
+          <div className="insight-icon"><Clock3 size={18} /></div>
+          <div>
+            <span>Próximas ativações</span>
+            <strong>{soon}</strong>
+            <small>{soon} {soon === 1 ? 'promoção em breve' : 'promoções em breve'}</small>
+          </div>
+        </article>
+      </div>
+    </section>
   )
 }
 
@@ -492,6 +586,12 @@ function parseMoney(value: string) {
   const cleaned = value.replace(/[^0-9,.-]/g, '').replace(/\./g, '').replace(',', '.')
   const parsed = Number(cleaned)
   return Number.isFinite(parsed) ? parsed : 0
+}
+
+function promotionDiscount(promotion: Promotion) {
+  const oldPrice = parseMoney(promotion.oldPrice)
+  const promoPrice = parseMoney(promotion.price)
+  return oldPrice > 0 && promoPrice > 0 && oldPrice > promoPrice ? ((oldPrice - promoPrice) / oldPrice) * 100 : 0
 }
 
 function formatMoney(value: number) {
