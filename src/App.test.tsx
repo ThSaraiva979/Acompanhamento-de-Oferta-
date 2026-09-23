@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
 import React from 'react'
-import { render, screen } from '@testing-library/react'
+import { cleanup, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, test } from 'vitest'
+import { afterEach, beforeEach, describe, expect, test } from 'vitest'
 import App from './App'
+
+afterEach(() => cleanup())
 
 describe('alternância de tema', () => {
   beforeEach(() => {
