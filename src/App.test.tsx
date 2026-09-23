@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import React from 'react'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, test } from 'vitest'
@@ -39,13 +40,13 @@ describe('navegação principal', () => {
     const overview = screen.getByRole('button', { name: 'Visão geral' })
     const promotions = screen.getByRole('button', { name: 'Promoções' })
 
-    expect(overview).toHaveAttribute('aria-current', 'page')
-    expect(promotions).not.toHaveAttribute('aria-current')
+    expect(overview.getAttribute('aria-current')).toBe('page')
+    expect(promotions.getAttribute('aria-current')).toBeNull()
 
     await user.click(promotions)
 
-    expect(promotions).toHaveAttribute('aria-current', 'page')
-    expect(overview).not.toHaveAttribute('aria-current')
+    expect(promotions.getAttribute('aria-current')).toBe('page')
+    expect(overview.getAttribute('aria-current')).toBeNull()
     expect(screen.getByRole('heading', { name: 'Promoções', level: 1 })).toBeTruthy()
   })
 })
