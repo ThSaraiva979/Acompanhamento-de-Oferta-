@@ -17,6 +17,10 @@ Ao acessar o dashboard, o navegador busca os dados de `GET /api/promocoes`. A ba
 
 **Atenção:** cada importação substitui as promoções anteriores, não as acumula. O histórico `import_batches` registra data e quantidade importada, não uma cópia integral do arquivo. Não há recuperação automática de linhas substituídas.
 
+## Preview isolado (GitHub / Workers Builds)
+
+O Cloudflare Workers Builds usa `wrangler preview` para branches e PRs, que requer `[[previews.d1_databases]]`. A configuração aponta para o banco **acompanhamento-ofertas-preview**, separado do banco de produção, com o mesmo esquema e inicialmente vazio. Importações de teste não devem atingir a base real.
+
 ## Ambiente local
 
 - `npm run dev` inicia só o Vite e **não** disponibiliza `/api`.

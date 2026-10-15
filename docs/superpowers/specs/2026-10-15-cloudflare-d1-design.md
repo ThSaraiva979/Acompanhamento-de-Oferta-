@@ -6,7 +6,7 @@
 Persistir as promoções importadas do Excel no D1 e exibi-las no dashboard React/Vite/TypeScript sem mudar as telas existentes. Conservar o Worker publicado até revisão da branch.
 
 ## Arquitetura
-Worker `acompanhamento-de-oferta` servirá o SPA via binding `ASSETS`, com exceção das rotas `/api/*` que terão precedência. D1 `acompanhamento-ofertas-db` ficará disponível como `env.DB`. A aplicação carrega `GET /api/promocoes` ao abrir e importa por `POST /api/promocoes/import`.
+Worker `acompanhamento-de-oferta` servirá o SPA via binding `ASSETS`, com exceção das rotas `/api/*` que terão precedência. D1 `acompanhamento-ofertas-db` ficará disponível como `env.DB`. Previews do Worker recebem binding `DB` para o D1 isolado `acompanhamento-ofertas-preview`. A aplicação carrega `GET /api/promocoes` ao abrir e importa por `POST /api/promocoes/import`.
 
 ## Persistência
 Tabelas `products(code,name)`, `stores(id,name)`, `promotions(id,product_code,store_id,old_price,price,start_date,end_date,detail,status)` e `import_batches(id,imported_at,row_count)`. Chaves estrangeiras e índices por produto, loja e status. Migração SQL versionada. Nova importação completa substitui registros atuais, mantendo histórico dos totais importados e fazendo exclusão + inserção em um único `DB.batch` transacional.
