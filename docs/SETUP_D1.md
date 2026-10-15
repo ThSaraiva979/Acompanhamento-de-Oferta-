@@ -19,7 +19,7 @@ Ao acessar o dashboard, o navegador busca os dados de `GET /api/promocoes`. A ba
 
 ## Preview isolado (GitHub / Workers Builds)
 
-O Cloudflare Workers Builds usa `wrangler preview` para branches e PRs, que requer `[[previews.d1_databases]]`. A configuração aponta para o banco **acompanhamento-ofertas-preview**, separado do banco de produção, com o mesmo esquema e inicialmente vazio. Importações de teste não devem atingir a base real.
+O Cloudflare Workers Builds usa `wrangler preview` para branches e PRs, que requer `[[previews.d1_databases]]`. O build de preview no Cloudflare deve usar **`npm run build`** antes de **`npx wrangler preview`** (a configuração foi ajustada na conta). A configuração aponta para o banco **acompanhamento-ofertas-preview**, separado do banco de produção, com o mesmo esquema e inicialmente vazio. Importações de teste não devem atingir a base real.
 
 ## Ambiente local
 
