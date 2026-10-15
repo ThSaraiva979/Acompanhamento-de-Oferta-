@@ -11,6 +11,8 @@ function context() {
   const statements: Array<{ sql: string; params: unknown[] }> = []
   const db = {
     prepare: vi.fn((sql: string) => ({
+      sql,
+      params: [],
       bind: (...params: unknown[]) => ({ sql, params }),
       all: async () => ({ results: [item()] }),
     })),

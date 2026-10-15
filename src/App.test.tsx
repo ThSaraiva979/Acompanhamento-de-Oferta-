@@ -73,7 +73,7 @@ describe('indicadores de pricing no dashboard', () => {
       { code: '123789', name: 'Arroz Tipo 1 5kg', oldPrice: 'R$ 29,90', price: 'R$ 24,90', store: 'Loja Norte', start: '', end: '', detail: '', status: 'BREVE' },
       { code: '456321', name: 'Café Torrado 500g', oldPrice: 'R$ 18,90', price: 'R$ 14,99', store: 'Loja Sul', start: '', end: '', detail: '', status: 'ATIVA' },
       { code: '987654', name: 'Detergente 500ml', oldPrice: 'R$ 3,49', price: 'R$ 2,49', store: 'Loja Centro', start: '', end: '', detail: '', status: 'ENCERRADA' },
-    ] }))))
+    ] })))
     render(<App />)
 
     expect(screen.getByText('Desconto médio')).toBeTruthy()
@@ -99,7 +99,7 @@ describe('persistência D1', () => {
     const user = userEvent.setup()
     render(<App />)
     await user.click(screen.getByRole('button', { name: 'Importar planilha' }))
-    const input = screen.getByRole('textbox', { name: /chave de importação/i }) as HTMLInputElement
+    const input = screen.getByLabelText(/chave de importação/i) as HTMLInputElement
     await user.type(input, 'minha-chave')
     expect(input.value).toBe('minha-chave')
     expect(localStorage.getItem('import-token')).toBeNull()
