@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import * as XLSX from 'xlsx'
 import { loadPromotions, savePromotions, type Promotion, type Status } from './promotions-api'
+import { parseMoney, formatImportedPrice } from './prices'
 import {
   BarChart3,
   CalendarDays,
@@ -156,8 +157,8 @@ function App() {
             return {
               code: find(row, ['código', 'codigo', 'cod']) || String(index + 1),
               name: find(row, ['nome', 'produto', 'descrição', 'descricao']) || 'Produto sem nome',
-              oldPrice: find(row, ['preço anterior', 'preco anterior', 'preço normal', 'preco normal']) || '',
-              price: find(row, ['preço', 'preco', 'valor']) || '',
+              oldPrice: formatImportedPrice(find(row, ['preço anterior', 'preco anterior', 'preço normal', 'preco normal'])) ,
+              price: formatImportedPrice(find(row, ['preço', 'preco', 'valor'])) ,
               store: find(row, ['loja', 'filial']) || 'Não informada',
               start: find(row, ['início', 'inicio', 'data inicial']) || '',
               end: find(row, ['fim', 'final', 'data final', 'vigência', 'vigencia']) || '',
@@ -600,13 +601,6 @@ function PromotionPanel({
   )
 }
 
-function parseMoney(value: string) {
-  if (!value) return 0
-  const cleaned = value.replace(/[^0-9,.-]/g, '').replace(/\./g, '').replace(',', '.')
-  const parsed = Number(cleaned)
-  return Number.isFinite(parsed) ? parsed : 0
-}
-
 function promotionDiscount(promotion: Promotion) {
   const oldPrice = parseMoney(promotion.oldPrice)
   const promoPrice = parseMoney(promotion.price)
@@ -652,8 +646,8 @@ function Vigencias({ data }: { data: Promotion[] }) {
   return (
     <section className="panel">
       <div className="timeline">
-        {ordered.map((p) => (
-          <div className="timeline-item" key={p.code}>
+        {ordered.map((p, index) => (
+          <div className="timeline-item" key={`${p.code}:${p.store}:${p.start}:${index}`}>
             <div className="dot" />
             <div>
               <b>{p.name}</b>
@@ -683,8 +677,8 @@ function Table({ rows }: { rows: Promotion[] }) {
           </tr>
         </thead>
         <tbody>
-          {rows.map((p) => (
-            <tr key={p.code}>
+          {rows.map((p, index) => (
+            <tr key={`${p.code}:${p.store}:${p.start}:${index}`}>
               <td>
                 <b>{p.name}</b>
                 <small>Código: {p.code}</small>
