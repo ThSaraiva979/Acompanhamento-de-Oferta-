@@ -1502,3 +1502,25 @@ td strong {
     padding: 13px;
   }
 }
+
+/* Cloudflare D1 import credentials (visually aligned with existing forms) */
+.import-auth {
+  display: grid;
+  gap: 8px;
+  max-width: 440px;
+  margin-bottom: 20px;
+}
+.import-auth label { font-weight: 700; }
+.import-auth input {
+  width: 100%;
+  max-width: 100%;
+  min-height: 44px;
+  padding: 10px 14px;
+  border: 1px solid var(--border, #d5dae3);
+  border-radius: 10px;
+  background: var(--surface, transparent);
+  color: inherit;
+  font: inherit;
+}
+.import-auth input:focus-visible { outline: 2px solid #5b82ef; outline-offset: 2px; }
+.import-auth small { opacity: 0.75; }

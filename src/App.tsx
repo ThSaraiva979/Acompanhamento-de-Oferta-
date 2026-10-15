@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import * as XLSX from 'xlsx'
+import { loadPromotions, savePromotions, type Promotion, type Status } from './promotions-api'
 import {
   BarChart3,
   CalendarDays,
@@ -21,27 +22,7 @@ import {
   Percent,
 } from 'lucide-react'
 
-type Status = 'ATIVA' | 'BREVE' | 'ENCERRADA'
 type Tab = 'dashboard' | 'promocoes' | 'lojas' | 'vigencias' | 'importar' | 'config'
-
-type Promotion = {
-  code: string
-  name: string
-  oldPrice: string
-  price: string
-  store: string
-  start: string
-  end: string
-  detail: string
-  status: Status
-}
-
-const sample: Promotion[] = [
-  { code: '789456', name: 'Coca-Cola 2L', oldPrice: 'R$ 12,99', price: 'R$ 8,99', store: 'Loja Centro', start: '20/09/2026', end: '30/09/2026', detail: '10 dias restantes', status: 'ATIVA' },
-  { code: '123789', name: 'Arroz Tipo 1 5kg', oldPrice: 'R$ 29,90', price: 'R$ 24,90', store: 'Loja Norte', start: '25/09/2026', end: '05/10/2026', detail: '3 dias para iniciar', status: 'BREVE' },
-  { code: '456321', name: 'Café Torrado 500g', oldPrice: 'R$ 18,90', price: 'R$ 14,99', store: 'Loja Sul', start: '18/09/2026', end: '28/09/2026', detail: '6 dias restantes', status: 'ATIVA' },
-  { code: '987654', name: 'Detergente 500ml', oldPrice: 'R$ 3,49', price: 'R$ 2,49', store: 'Loja Centro', start: '01/09/2026', end: '20/09/2026', detail: 'Encerrada', status: 'ENCERRADA' },
-]
 
 const nav: [Tab, string, ReactNode][] = [
   ['dashboard', 'Visão geral', <LayoutDashboard />],
@@ -54,7 +35,10 @@ const nav: [Tab, string, ReactNode][] = [
 
 function App() {
   const [tab, setTab] = useState<Tab>('dashboard')
-  const [data, setData] = useState<Promotion[]>(sample)
+  const [data, setData] = useState<Promotion[]>([])
+  const [importToken, setImportToken] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
   const [q, setQ] = useState('')
   const [store, setStore] = useState('')
   const [status, setStatus] = useState('')
@@ -70,6 +54,17 @@ function App() {
     document.documentElement.dataset.theme = theme
     localStorage.setItem('theme', theme)
   }, [theme])
+
+  useEffect(() => {
+    let mounted = true
+    loadPromotions()
+      .then((rows) => { if (mounted) setData(rows) })
+      .catch(() => {
+        if (mounted) setLoadError('Não foi possível carregar as promoções do banco D1. Confira a conexão do Worker.')
+      })
+      .finally(() => { if (mounted) setLoading(false) })
+    return () => { mounted = false }
+  }, [])
 
   const filtered = useMemo(
     () =>
@@ -131,20 +126,24 @@ function App() {
   }
 
   function importFile(file: File) {
+    if (!importToken.trim()) {
+      setMessage('Informe a chave de importação antes de selecionar a planilha.')
+      return
+    }
     setMessage('Lendo planilha...')
     const reader = new FileReader()
 
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       try {
         const wb = XLSX.read(event.target?.result, { type: 'array' })
         const ws = wb.Sheets[wb.SheetNames[0]]
         const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: '' })
 
         const find = (row: Record<string, unknown>, keys: string[]) => {
-          const key = Object.keys(row).find((x) => {
-            const normalized = x.toLowerCase().trim()
-            return keys.some((candidate) => normalized === candidate || normalized.includes(candidate))
-          })
+          const names = Object.keys(row)
+          const normalized = (value: string) => value.toLowerCase().trim()
+          const key = names.find((name) => keys.some((candidate) => normalized(name) === candidate))
+            ?? names.find((name) => keys.some((candidate) => normalized(name).includes(candidate)))
           return key ? String(row[key] ?? '') : ''
         }
 
@@ -169,14 +168,18 @@ function App() {
           .filter((p) => p.name !== 'Produto sem nome' || p.code !== '')
 
         if (imported.length) {
+          setMessage('Salvando promoções no Cloudflare D1...')
+          const total = await savePromotions(imported, importToken.trim())
           setData(imported)
-          setMessage(`${imported.length} promoções importadas com sucesso.`)
+          setImportToken('')
+          setLoadError('')
+          setMessage(`${total} promoções salvas no Cloudflare D1 com sucesso.`)
           setTab('promocoes')
         } else {
           setMessage('A planilha não possui linhas reconhecíveis.')
         }
-      } catch {
-        setMessage('Não foi possível ler a planilha. Verifique o arquivo.')
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : 'Não foi possível importar a planilha.')
       }
     }
 
@@ -214,7 +217,7 @@ function App() {
         <div className="sidebar-footer">
           Dados carregados: <strong>{data.length}</strong>
           <br />
-          Protótipo v0.2.1
+          v0.3.0 · Cloudflare D1
         </div>
       </aside>
 
@@ -249,6 +252,10 @@ function App() {
             </button>
           </div>
         </header>
+
+        {loading && <div className="notice" role="status">Carregando promoções do banco D1...</div>}
+        {loadError && <div className="notice" role="alert">{loadError}</div>}
+        {message && tab !== 'importar' && <div className="notice" role="status">{message}</div>}
 
         {tab === 'dashboard' && (
           <>
@@ -302,6 +309,18 @@ function App() {
 
         {tab === 'importar' && (
           <section className="panel import-panel">
+            <div className="import-auth">
+              <label htmlFor="import-token">Chave de importação</label>
+              <input
+                id="import-token"
+                type="password"
+                autoComplete="off"
+                value={importToken}
+                onChange={(event) => setImportToken(event.target.value)}
+                placeholder="Chave configurada no Cloudflare"
+              />
+              <small>A chave fica apenas nesta sessão e não é salva no navegador.</small>
+            </div>
             <div className="upload-box" onClick={() => inputRef.current?.click()}>
               <FileSpreadsheet size={44} />
               <h2>Importe sua planilha</h2>
@@ -319,7 +338,7 @@ function App() {
             </div>
 
             {message && (
-              <div className="notice">
+              <div className="notice" role="status">
                 <CheckCircle2 size={18} />
                 {message}
               </div>
@@ -346,7 +365,7 @@ function App() {
             <div className="setting">
               <div>
                 <b>Atualização dos dados</b>
-                <span>Os dados permanecem no navegador até uma nova importação.</span>
+                <span>Os dados são carregados do Cloudflare D1 e persistidos entre acessos.</span>
               </div>
               <SlidersHorizontal size={20} />
             </div>
