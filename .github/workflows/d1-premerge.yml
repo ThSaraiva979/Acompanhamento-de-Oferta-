@@ -1,0 +1,22 @@
+name: D1 pre-merge verification
+
+on:
+  push:
+    branches: [feat/cloudflare-d1-promocoes]
+
+jobs:
+  preview-smoke-and-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - name: Inspect dependency vulnerabilities
+        run: |
+          npm audit --json > audit-report.json || true
+          node -e "const a=require('./audit-report.json');console.log('npm audit findings:',JSON.stringify(a.metadata?.vulnerabilities));for (const [n,x] of Object.entries(a.vulnerabilities || {})) {if (x.severity==='critical'||x.severity==='high') console.log(n,x.severity,JSON.stringify(x.via).slice(0,500))}"
+      - name: Verify preview responds with D1 JSON
+        run: |
+          node -e "fetch('https://feat-cloudflare-d1-promocoes-acompanhamento-de-oferta.thiagodasilvasaraiva979.workers.dev/api/promocoes').then(async r=>{const b=await r.text();console.log('GET /api/promocoes: HTTP',r.status,'body',b.slice(0,400));if(r.status!==200){process.exitCode=1;return;}const d=JSON.parse(b);if(!Array.isArray(d.promotions))process.exitCode=1}).catch(e=>{console.error(e);process.exitCode=1})"
