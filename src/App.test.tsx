@@ -98,7 +98,7 @@ describe('persistência D1', () => {
   test('solicita chave de importação sem salvá-la no localStorage', async () => {
     const user = userEvent.setup()
     render(<App />)
-    await user.click(screen.getByRole('button', { name: 'Importar planilha' }))
+    await user.click(screen.getAllByRole('button', { name: 'Importar planilha' })[0])
     const input = screen.getByLabelText(/chave de importação/i) as HTMLInputElement
     await user.type(input, 'minha-chave')
     expect(input.value).toBe('minha-chave')
