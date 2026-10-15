@@ -1,6 +1,15 @@
-name = "acompanhamento-de-ofertas"
-compatibility_date = "2026-09-22"
+name = "acompanhamento-de-oferta"
+main = "worker/index.ts"
+compatibility_date = "2026-10-15"
 
 [assets]
 directory = "./dist"
+binding = "ASSETS"
 not_found_handling = "single-page-application"
+run_worker_first = ["/api/*"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "acompanhamento-ofertas-db"
+database_id = "164f66ee-5d37-464d-ac59-879e45b3d777"
+migrations_dir = "migrations"
