@@ -13,7 +13,8 @@ export type Promotion = {
 }
 
 export async function loadPromotions(): Promise<Promotion[]> {
-  const response = await fetch('/api/promocoes', { cache: 'no-store' })
+  const response = await fetch('/api/promocoes', { cache: 'no-store', credentials:'same-origin' })
+  if (response.status===401) throw new Error('Sessão expirada. Entre novamente.')
   if (!response.ok) throw new Error('Não foi possível conectar ao banco de dados.')
   const body: unknown = await response.json()
   if (!body || typeof body !== 'object' || !('promotions' in body) ||
@@ -23,14 +24,16 @@ export async function loadPromotions(): Promise<Promotion[]> {
   return (body as { promotions: Promotion[] }).promotions
 }
 
-export async function savePromotions(promotions: Promotion[], token: string): Promise<number> {
+export async function savePromotions(promotions: Promotion[]): Promise<number> {
   const response = await fetch('/api/promocoes/import', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+    credentials: 'same-origin',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ promotions }),
   })
   if (!response.ok) {
-    if (response.status === 401) throw new Error('Falha de autorização: confira sua chave de importação.')
+    if (response.status === 401) throw new Error('Sessão expirada. Entre novamente.')
+    if (response.status === 403) throw new Error('Você não tem permissão para importar.')
     if (response.status === 503) throw new Error('O servidor não está configurado para importar promoções.')
     if (response.status === 413) throw new Error('Planilha muito grande para importar.')
     if (response.status === 400) throw new Error('Planilha inválida. Verifique seus campos e o limite de 1.000 linhas.')
