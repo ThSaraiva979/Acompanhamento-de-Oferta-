@@ -1,3 +1,7 @@
+import { type AuthDB, type Statement } from './db'
+import { activateOwner, changePassword, getOwnerSetupStatus, getSession, login, logout, reply, safeUser } from './auth'
+import { handleUsers } from './users'
+
 export type Status = 'ATIVA' | 'BREVE' | 'ENCERRADA'
 
 export interface Promotion {
@@ -12,18 +16,9 @@ export interface Promotion {
   status: Status
 }
 
-interface Statement {
-  bind(...values: (string | number | null)[]): Statement
-  all<T>(): Promise<{ results: T[] }>
-}
-interface Database {
-  prepare(sql: string): Statement
-  batch(statements: Statement[]): Promise<unknown>
-}
 interface Env {
-  DB?: Database
+  DB?: AuthDB
   ASSETS: { fetch(request: Request): Promise<Response> }
-  IMPORT_TOKEN?: string
 }
 
 const fields: Array<keyof Promotion> = [
@@ -52,7 +47,7 @@ function validate(row: unknown): Promotion | null {
   return parsed as Promotion
 }
 
-async function readPromotions(db: Database): Promise<Promotion[]> {
+async function readPromotions(db: AuthDB): Promise<Promotion[]> {
   const query = `SELECT p.code AS code, p.name AS name, pr.old_price AS oldPrice,
       pr.price AS price, s.name AS store, pr.start_date AS start,
       pr.end_date AS end, pr.detail AS detail, pr.status AS status
@@ -66,11 +61,6 @@ async function readPromotions(db: Database): Promise<Promotion[]> {
 
 async function importPromotions(request: Request, env: Env): Promise<Response> {
   if (!env.DB) return json({ error: 'Banco de dados indisponível.' }, 503)
-  if (!env.IMPORT_TOKEN) return json({ error: 'Importação não configurada no servidor.' }, 503)
-  if (request.headers.get('Authorization') !== `Bearer ${env.IMPORT_TOKEN}`) {
-    return json({ error: 'Chave de importação inválida.' }, 401)
-  }
-
   let payload: unknown
   try {
     const raw = await request.text()
@@ -129,23 +119,50 @@ async function importPromotions(request: Request, env: Env): Promise<Response> {
   }
 }
 
+function sameOrigin(request: Request): boolean {
+  return request.headers.get('Origin') === new URL(request.url).origin
+}
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const path = new URL(request.url).pathname
-    if (path === '/api/promocoes') {
-      if (request.method !== 'GET') return json({ error: 'Método não permitido.' }, 405)
-      if (!env.DB) return json({ error: 'Banco de dados indisponível.' }, 503)
-      try {
-        return json({ promotions: await readPromotions(env.DB) })
-      } catch {
-        return json({ error: 'Não foi possível carregar as promoções.' }, 500)
+    if (!path.startsWith('/api/')) return env.ASSETS.fetch(request)
+    if (!env.DB) return reply({ error:'Banco de dados indisponível.' },503)
+    const db = env.DB
+
+    if(request.method !== 'GET' && !sameOrigin(request))
+      return reply({error:'Origem não permitida.'},403)
+
+    try {
+      if(path === '/api/auth/setup-status' && request.method === 'GET')
+        return reply({status:await getOwnerSetupStatus(db)})
+      if(path === '/api/auth/activate-owner' && request.method === 'POST')
+        return activateOwner(request,db)
+      if(path === '/api/auth/login' && request.method === 'POST')
+        return login(request,db)
+      const user = await getSession(request,db)
+      if(!user) return reply({error:'Sessão expirada ou inexistente.'},401)
+
+      if(path === '/api/auth/me' && request.method === 'GET') return reply({user:safeUser(user)})
+      if(path === '/api/auth/logout' && request.method === 'POST') return logout(request,db)
+      if(path === '/api/auth/change-password' && request.method === 'POST')
+        return changePassword(request,db,user)
+
+      if(user.must_change_password)
+        return reply({error:'É necessário definir uma nova senha.'},403)
+
+      if(path === '/api/promocoes' && request.method === 'GET')
+        return reply({promotions:await readPromotions(db)})
+      if(path === '/api/promocoes/import' && request.method === 'POST') {
+        if(user.role !== 'OWNER') return reply({error:'Sem permissão para importar.'},403)
+        return importPromotions(request,env)
       }
+      if(path.startsWith('/api/admin/')) {
+        if(user.role !== 'OWNER') return reply({error:'Sem permissão administrativa.'},403)
+        return handleUsers(request,db,path)
+      }
+      return reply({error:'Endpoint não encontrado.'},404)
+    } catch {
+      return reply({error:'Não foi possível concluir a operação.'},503)
     }
-    if (path === '/api/promocoes/import') {
-      if (request.method !== 'POST') return json({ error: 'Método não permitido.' }, 405)
-      return importPromotions(request, env)
-    }
-    if (path.startsWith('/api/')) return json({ error: 'Endpoint não encontrado.' }, 404)
-    return env.ASSETS.fetch(request)
   },
 }
