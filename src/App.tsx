@@ -45,6 +45,7 @@ function App() {
   const [session,setSession] = useState<AuthUser|null>(null)
   const [setup,setSetup] = useState<'pending'|'complete'>('complete')
   const [error,setError] = useState('')
+  useEffect(()=>{document.documentElement.dataset.theme=localStorage.getItem('theme')==='dark'?'dark':'light'},[])
   useEffect(()=>{
     let active=true
     getSession().then(async user=>{
@@ -68,10 +69,10 @@ function App() {
   if(phase==='guest') return <>{error && <p className="auth-global-error" role="alert">{error}</p>}<Login onAuthenticated={onAuthenticated} setupStatus={setup}/></>
   if(phase==='password') return <ChangePassword onChanged={onExpired}/>
   if(!session) return null
-  return <Dashboard session={session} onLogout={()=>{void onLogout()}} onExpired={onExpired}/>
+  return <Dashboard session={session} onLogout={()=>{void onLogout()}} onExpired={onExpired} onChangePassword={()=>setPhase('password')}/>
 }
 
-function Dashboard({session,onLogout,onExpired}:{session:AuthUser;onLogout:()=>void;onExpired:()=>void}) {
+function Dashboard({session,onLogout,onExpired,onChangePassword}:{session:AuthUser;onLogout:()=>void;onExpired:()=>void;onChangePassword:()=>void}) {
   const [tab, setTab] = useState<Tab>('dashboard')
   const [data, setData] = useState<Promotion[]>([])
   const [loading, setLoading] = useState(true)
@@ -374,6 +375,7 @@ function Dashboard({session,onLogout,onExpired}:{session:AuthUser;onLogout:()=>v
         {session.role==='OWNER' && tab==='usuarios' && <UserAdmin/>}
         {tab === 'config' && (
           <section className="panel settings-panel">
+            <div className="setting"><div><b>Senha de acesso</b><span>Atualize sua senha e encerre as sessões antigas.</span></div><button type="button" className="logout-button" onClick={onChangePassword}>Alterar minha senha</button></div>
             <div className="setting">
               <div>
                 <b>Modo compacto</b>

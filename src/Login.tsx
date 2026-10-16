@@ -1,5 +1,5 @@
-import { useState, type FormEvent } from 'react'
-import { Eye, EyeOff, LockKeyhole, UserRound, ShieldCheck } from 'lucide-react'
+import { useEffect, useState, type FormEvent } from 'react'
+import { Eye, EyeOff, LockKeyhole, UserRound, ShieldCheck, Moon, Sun } from 'lucide-react'
 import { activateOwner, changePassword, login, type AuthUser } from './auth-api'
 
 export function Login({ onAuthenticated, setupStatus }: {
@@ -12,6 +12,9 @@ export function Login({ onAuthenticated, setupStatus }: {
   const [activation,setActivation]=useState(false)
   const [code,setCode]=useState('')
   const [confirm,setConfirm]=useState('')
+  const [activated,setActivated]=useState(false)
+  const [theme,setTheme]=useState<'light'|'dark'>(()=>localStorage.getItem('theme')==='dark'?'dark':'light')
+  useEffect(()=>{document.documentElement.dataset.theme=theme;localStorage.setItem('theme',theme)},[theme])
   const [busy,setBusy]=useState(false)
   const [message,setMessage]=useState('')
   async function submit(event:FormEvent) {
@@ -23,6 +26,7 @@ export function Login({ onAuthenticated, setupStatus }: {
       if(activation) {
         await activateOwner(code.trim(),password)
         setActivation(false)
+        setActivated(true)
         setCode('')
         setConfirm('')
         setPassword('')
@@ -34,6 +38,7 @@ export function Login({ onAuthenticated, setupStatus }: {
     finally {setBusy(false)}
   }
   return <main className="auth-screen">
+    <button type="button" className="auth-theme-toggle" onClick={()=>setTheme(t=>t==='dark'?'light':'dark')} aria-label={theme==='dark'?'Ativar modo claro':'Ativar modo escuro'}>{theme==='dark'?<Sun size={19}/>:<Moon size={19}/>}</button>
     <div className="auth-decoration" aria-hidden="true"><div className="auth-orb"/></div>
     <section className="auth-card" aria-label="Acesso ao Acompanhamento de Ofertas">
       <div className="auth-logo"><span>AO</span><div>Acompanhamento <strong>de Ofertas</strong></div></div>
@@ -49,7 +54,7 @@ export function Login({ onAuthenticated, setupStatus }: {
         {message && <p role="alert" className="auth-alert">{message}</p>}
         <button className="primary auth-submit" type="submit" disabled={busy}>{busy?'Aguarde...':activation?'Ativar minha conta':'Entrar'}</button>
       </form>
-      {setupStatus==='pending' && <button type="button" className="auth-link" onClick={()=>{setActivation(v=>!v);setMessage('');setPassword('')}}>{activation?'Voltar ao login':'Primeiro acesso do administrador'}</button>}
+      {setupStatus==='pending' && !activated && <button type="button" className="auth-link" onClick={()=>{setActivation(v=>!v);setMessage('');setPassword('')}}>{activation?'Voltar ao login':'Primeiro acesso do administrador'}</button>}
       <p className="auth-footer">Acesso protegido · Cloudflare D1</p>
     </section>
   </main>

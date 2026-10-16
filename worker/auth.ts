@@ -33,14 +33,22 @@ export async function activateOwner(request: Request, db: AuthDB): Promise<Respo
   if (await getOwnerSetupStatus(db) !== 'pending') return reply({ error: 'Administrador já ativado.' }, 403)
   const digest = await digestSecret(code)
   const time = now()
+  const key = await attemptKey(request, 'activate-owner')
+  const attempts = await db.prepare('SELECT failures, window_until FROM login_attempts WHERE identifier=?').bind(key).first<{failures:number;window_until:number}>()
+  if (attempts && attempts.window_until > time && attempts.failures >= maxFailures)
+    return reply({ error:'Muitas tentativas. Aguarde alguns minutos.' },429)
   const token = await db.prepare('SELECT token_hash FROM owner_activations WHERE token_hash=? AND consumed_at IS NULL AND expires_at>?').bind(digest,time).first<{token_hash:string}>()
-  if (!token) return reply({ error: 'Código inválido ou expirado.' }, 400)
+  if (!token) {
+    await db.prepare('INSERT INTO login_attempts(identifier,failures,window_until) VALUES(?,1,?) ON CONFLICT(identifier) DO UPDATE SET failures=CASE WHEN window_until<=? THEN 1 ELSE failures+1 END,window_until=CASE WHEN window_until<=? THEN excluded.window_until ELSE window_until END').bind(key,time+windowSeconds,time,time).run()
+    return reply({ error: 'Código inválido ou expirado.' }, 400)
+  }
   const hashed = await hashPassword(password)
   const updates = await db.batch([
     db.prepare("UPDATE owner_activations SET consumed_at=? WHERE token_hash=? AND consumed_at IS NULL AND expires_at>? AND EXISTS (SELECT 1 FROM users WHERE role='OWNER' AND password_hash IS NULL)").bind(time,digest,time),
     db.prepare("UPDATE users SET password_hash=?, password_salt=?, password_iterations=?, must_change_password=0, updated_at=CURRENT_TIMESTAMP WHERE role='OWNER' AND password_hash IS NULL AND EXISTS (SELECT 1 FROM owner_activations WHERE token_hash=? AND consumed_at=?)").bind(hashed.hash,hashed.salt,hashed.iterations,digest,time),
   ])
   if (updates[0]?.meta?.changes !== 1 || updates[1]?.meta?.changes !== 1) return reply({ error: 'Código inválido ou já utilizado.' }, 400)
+  await db.prepare('DELETE FROM login_attempts WHERE identifier=?').bind(key).run()
   return reply({ activated: true })
 }
 export async function getSession(request: Request, db: AuthDB): Promise<UserRecord | null> {
