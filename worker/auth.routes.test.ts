@@ -34,4 +34,23 @@ describe('ativação única e sessão de acesso',()=>{
   const token=readSessionCookie(new Request('https://site.test',{headers:{Cookie:res.headers.get('set-cookie')!}}))
   expect(token?.length).toBe(64)
  })
+ it('limita tentativas de ativação por origem',async()=>{
+  const future=Math.floor(Date.now()/1000)+800
+  const calls:string[]=[]
+  const db={prepare:(sql:string)=>{
+    calls.push(sql)
+    const st={bind(..._:unknown[]){return st},async first(){
+      if(sql.includes("FROM users WHERE role='OWNER'")) return {password_hash:null}
+      if(sql.includes('FROM login_attempts')) return {failures:8,window_until:future}
+      return null
+    },async run(){return {meta:{changes:1}}}}
+    return st
+  }}
+  const code='a'.repeat(64)
+  const req=new Request('https://site.test/api/auth/activate-owner',{method:'POST',body:JSON.stringify({code,password:'SenhaForte123456'}),headers:{'CF-Connecting-IP':'192.0.2.1'}})
+  const res=await activateOwner(req,db as never)
+  expect(res.status).toBe(429)
+  expect(calls.some(x=>x.includes('FROM owner_activations'))).toBe(false)
+ })
+
 })
