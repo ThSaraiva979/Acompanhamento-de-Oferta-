@@ -1,0 +1,15 @@
+name: Preview login security smoke
+on:
+  push:
+    branches: [feat/login-obrigatorio-d1]
+  workflow_dispatch:
+jobs:
+  preview-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check protected preview APIs
+        run: node scripts/preview-smoke.mjs

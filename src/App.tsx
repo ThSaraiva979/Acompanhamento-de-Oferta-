@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import * as XLSX from 'xlsx'
 import { loadPromotions, savePromotions, type Promotion, type Status } from './promotions-api'
+import { getSession, getSetupStatus, logout, type AuthUser } from './auth-api'
+import { Login, ChangePassword } from './Login'
+import UserAdmin from './UserAdmin'
 import { parseMoney, formatImportedPrice } from './prices'
 import {
   BarChart3,
@@ -21,9 +24,11 @@ import {
   Moon,
   Sun,
   Percent,
+  Users,
+  LogOut,
 } from 'lucide-react'
 
-type Tab = 'dashboard' | 'promocoes' | 'lojas' | 'vigencias' | 'importar' | 'config'
+type Tab = 'dashboard' | 'promocoes' | 'lojas' | 'vigencias' | 'importar' | 'usuarios' | 'config'
 
 const nav: [Tab, string, ReactNode][] = [
   ['dashboard', 'Visão geral', <LayoutDashboard />],
@@ -31,13 +36,45 @@ const nav: [Tab, string, ReactNode][] = [
   ['lojas', 'Lojas', <Store />],
   ['vigencias', 'Vigências', <CalendarDays />],
   ['importar', 'Importar planilha', <Upload />],
+  ['usuarios', 'Usuários', <Users />],
   ['config', 'Configurações', <Settings />],
 ]
 
 function App() {
+  const [phase,setPhase] = useState<'checking'|'guest'|'dashboard'|'password'>('checking')
+  const [session,setSession] = useState<AuthUser|null>(null)
+  const [setup,setSetup] = useState<'pending'|'complete'>('complete')
+  const [error,setError] = useState('')
+  useEffect(()=>{document.documentElement.dataset.theme=localStorage.getItem('theme')==='dark'?'dark':'light'},[])
+  useEffect(()=>{
+    let active=true
+    getSession().then(async user=>{
+      if(!active)return
+      if(user){setSession(user);setPhase(user.mustChangePassword?'password':'dashboard')}
+      else {setSetup(await getSetupStatus());if(active)setPhase('guest')}
+    }).catch(()=>{if(active){setError('Não foi possível verificar o acesso. Tente atualizar a página.');setPhase('guest')}})
+    return ()=>{active=false}
+  },[])
+  function onAuthenticated(user:AuthUser) {
+    setSession(user)
+    setError('')
+    setPhase(user.mustChangePassword?'password':'dashboard')
+  }
+  function onExpired() {setSession(null);setPhase('guest')}
+  async function onLogout() {
+    try {await logout()} catch {/* login visual mesmo se sessão já expirou */}
+    onExpired()
+  }
+  if(phase==='checking') return <div className="auth-screen" role="status">Verificando sessão segura...</div>
+  if(phase==='guest') return <>{error && <p className="auth-global-error" role="alert">{error}</p>}<Login onAuthenticated={onAuthenticated} setupStatus={setup}/></>
+  if(phase==='password') return <ChangePassword onChanged={onExpired}/>
+  if(!session) return null
+  return <Dashboard session={session} onLogout={()=>{void onLogout()}} onExpired={onExpired} onChangePassword={()=>setPhase('password')}/>
+}
+
+function Dashboard({session,onLogout,onExpired,onChangePassword}:{session:AuthUser;onLogout:()=>void;onExpired:()=>void;onChangePassword:()=>void}) {
   const [tab, setTab] = useState<Tab>('dashboard')
   const [data, setData] = useState<Promotion[]>([])
-  const [importToken, setImportToken] = useState('')
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState('')
   const [q, setQ] = useState('')
@@ -60,12 +97,13 @@ function App() {
     let mounted = true
     loadPromotions()
       .then((rows) => { if (mounted) setData(rows) })
-      .catch(() => {
+      .catch((error) => {
+        if (error instanceof Error && /sessão/i.test(error.message)) { onExpired(); return }
         if (mounted) setLoadError('Não foi possível carregar as promoções do banco D1. Confira a conexão do Worker.')
       })
       .finally(() => { if (mounted) setLoading(false) })
     return () => { mounted = false }
-  }, [])
+  }, [onExpired])
 
   const filtered = useMemo(
     () =>
@@ -115,6 +153,7 @@ function App() {
     vigencias: 'Vigências',
     importar: 'Importar planilha',
     config: 'Configurações',
+    usuarios: 'Usuários',
   }
 
   const subtitle: Record<Tab, string> = {
@@ -124,13 +163,10 @@ function App() {
     vigencias: 'Visualize as ofertas organizadas por período.',
     importar: 'Carregue uma planilha para atualizar as promoções.',
     config: 'Personalize o comportamento do aplicativo.',
+    usuarios: 'Cadastre e gerencie acessos ao sistema.',
   }
 
   function importFile(file: File) {
-    if (!importToken.trim()) {
-      setMessage('Informe a chave de importação antes de selecionar a planilha.')
-      return
-    }
     setMessage('Lendo planilha...')
     const reader = new FileReader()
 
@@ -170,9 +206,8 @@ function App() {
 
         if (imported.length) {
           setMessage('Salvando promoções no Cloudflare D1...')
-          const total = await savePromotions(imported, importToken.trim())
+          const total = await savePromotions(imported)
           setData(imported)
-          setImportToken('')
           setLoadError('')
           setMessage(`${total} promoções salvas no Cloudflare D1 com sucesso.`)
           setTab('promocoes')
@@ -180,6 +215,7 @@ function App() {
           setMessage('A planilha não possui linhas reconhecíveis.')
         }
       } catch (error) {
+        if(error instanceof Error && /sessão/i.test(error.message)) onExpired()
         setMessage(error instanceof Error ? error.message : 'Não foi possível importar a planilha.')
       }
     }
@@ -198,7 +234,7 @@ function App() {
         </div>
 
         <nav>
-          {nav.map(([id, label, icon]) => (
+          {nav.filter(([id])=>session.role==='OWNER' || (id!=='importar' && id!=='usuarios')).map(([id, label, icon]) => (
             <button
               key={id}
               type="button"
@@ -216,6 +252,8 @@ function App() {
         </nav>
 
         <div className="sidebar-footer">
+          <strong>{session.displayName}</strong> · {session.role==='OWNER'?'Administrador':'Consulta'}
+          <br />
           Dados carregados: <strong>{data.length}</strong>
           <br />
           v0.3.0 · Cloudflare D1
@@ -240,17 +278,11 @@ function App() {
               {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
             </button>
 
-            <button
-              type="button"
-              className="primary"
-              onClick={() => {
-                setTab('importar')
-                setMessage('')
-              }}
-            >
-              <Upload size={17} />
-              Importar planilha
-            </button>
+            {session.role==='OWNER' && <button
+              type="button" className="primary"
+              onClick={()=>{setTab('importar');setMessage('')}}
+            ><Upload size={17}/>Importar planilha</button>}
+            <button type="button" className="logout-button" onClick={onLogout} aria-label="Sair da conta"><LogOut size={17}/> Sair</button>
           </div>
         </header>
 
@@ -308,20 +340,8 @@ function App() {
         {tab === 'lojas' && <Lojas data={data} stores={stores} />}
         {tab === 'vigencias' && <Vigencias data={data} />}
 
-        {tab === 'importar' && (
+        {session.role==='OWNER' && tab === 'importar' && (
           <section className="panel import-panel">
-            <div className="import-auth">
-              <label htmlFor="import-token">Chave de importação</label>
-              <input
-                id="import-token"
-                type="password"
-                autoComplete="off"
-                value={importToken}
-                onChange={(event) => setImportToken(event.target.value)}
-                placeholder="Chave configurada no Cloudflare"
-              />
-              <small>A chave fica apenas nesta sessão e não é salva no navegador.</small>
-            </div>
             <div className="upload-box" onClick={() => inputRef.current?.click()}>
               <FileSpreadsheet size={44} />
               <h2>Importe sua planilha</h2>
@@ -352,8 +372,10 @@ function App() {
           </section>
         )}
 
+        {session.role==='OWNER' && tab==='usuarios' && <UserAdmin/>}
         {tab === 'config' && (
           <section className="panel settings-panel">
+            <div className="setting"><div><b>Senha de acesso</b><span>Atualize sua senha e encerre as sessões antigas.</span></div><button type="button" className="logout-button" onClick={onChangePassword}>Alterar minha senha</button></div>
             <div className="setting">
               <div>
                 <b>Modo compacto</b>
