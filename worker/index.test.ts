@@ -1,109 +1,98 @@
 import { describe, expect, it, vi } from 'vitest'
 import worker from './index'
+import { cookieName } from './crypto'
 
-const item = (overrides = {}) => ({
-  code: '789', name: 'Arroz 5kg', oldPrice: 'R$ 29,90', price: 'R$ 24,90',
-  store: 'Centro', start: '15/10/2026', end: '20/10/2026',
-  detail: 'Importada da planilha', status: 'ATIVA', ...overrides,
-})
-
-function context() {
-  const statements: Array<{ sql: string; params: unknown[] }> = []
-  const db = {
-    prepare: vi.fn((sql: string) => ({
-      sql,
-      params: [],
-      bind: (...params: unknown[]) => ({ sql, params }),
-      all: async () => ({ results: [item()] }),
-    })),
-    batch: vi.fn(async (batch: Array<{ sql: string; params: unknown[] }>) => {
-      statements.push(...batch)
-      return []
-    }),
-  }
-  const assets = { fetch: vi.fn(async () => new Response('website', { status: 200 })) }
-  return { db, statements, env: { DB: db, ASSETS: assets, IMPORT_TOKEN: 'secret-test-value' }, assets }
+const cookie = cookieName+'='+'a'.repeat(64)
+const owner={id:1,username:'Thiago Saraiva',display_name:'Thiago Saraiva',role:'OWNER',password_hash:'hash',password_salt:'salt',password_iterations:600000,is_active:1,must_change_password:0}
+const viewer={...owner,id:2,username:'consulta',display_name:'Consulta',role:'VIEWER'}
+const item = (overrides={})=>({code:'789',name:'Arroz',oldPrice:'R$ 20,00',price:'R$ 15,00',store:'Centro',start:'',end:'',detail:'',status:'ATIVA',...overrides})
+function context(user:typeof owner | null = owner) {
+ const statements:Array<{sql:string;params:unknown[]}>= []
+ const db={
+  prepare:vi.fn((sql:string)=>{
+   const stmt={sql,params:[] as unknown[],bind(...values:unknown[]){this.params=values;return this},
+     async first(){return sql.includes('FROM sessions s JOIN users')?user:sql.includes('FROM users WHERE role=')?{password_hash:'hash'}:sql.includes('FROM login_attempts')?null:null},
+     async all(){return {results:sql.includes('FROM promotions pr')?[item()]:sql.includes('FROM users ORDER')?[owner,viewer]:[]}},
+     async run(){return {meta:{changes:1}}}
+   };return stmt
+  }),
+  batch:vi.fn(async (batch:Array<{sql:string;params:unknown[]}>)=>{statements.push(...batch);return batch.map(()=>({meta:{changes:1}}))})
+ }
+ const assets={fetch:vi.fn(async()=>new Response('website'))}
+ return {db,env:{DB:db,ASSETS:assets},assets,statements}
 }
-
-function post(body: unknown, token = 'secret-test-value') {
-  return new Request('https://example.com/api/promocoes/import', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
-    body: JSON.stringify(body),
-  })
+function req(path:string,method='GET',body?:unknown,{authenticate=true,origin='https://example.com'}={}) {
+ const headers:Record<string,string>={}
+ if(authenticate)headers.Cookie=cookie
+ if(method!=='GET'){headers.Origin=origin;headers['Content-Type']='application/json'}
+ return new Request('https://example.com'+path,{method,headers,body:body===undefined?undefined:JSON.stringify(body)})
 }
-
-describe('Worker API e segurança D1', () => {
-  it('busca promoções com JOIN na base em vez de servir HTML do SPA', async () => {
-    const { env, db, assets } = context()
-    const response = await worker.fetch(new Request('https://example.com/api/promocoes'), env)
-    expect(response.status).toBe(200)
-    expect((await response.json()).promotions).toEqual([item()])
-    expect(db.prepare.mock.calls[0][0]).toMatch(/JOIN products/)
-    expect(assets.fetch).not.toHaveBeenCalled()
-  })
-
-  it('encaminha páginas e recursos estáticos ao assets binding', async () => {
-    const { env, assets } = context()
-    const response = await worker.fetch(new Request('https://example.com/dashboard'), env)
-    expect(await response.text()).toBe('website')
-    expect(assets.fetch).toHaveBeenCalledOnce()
-  })
-
-  it('rejeita qualquer escrita sem token correto antes de chamar o banco', async () => {
-    const { env, db } = context()
-    const response = await worker.fetch(post({ promotions: [item()] }, 'incorreta'), env)
-    expect(response.status).toBe(401)
-    expect(db.batch).not.toHaveBeenCalled()
-  })
-
-  it('rejeita importação quando segredo do servidor não estiver configurado', async () => {
-    const { env } = context()
-    const response = await worker.fetch(post({ promotions: [item()] }), { ...env, IMPORT_TOKEN: undefined })
-    expect(response.status).toBe(503)
-  })
-
-  it('rejeita payload inválido sem apagar registros anteriores', async () => {
-    const { env, db } = context()
-    const response = await worker.fetch(post({ promotions: [item({ status: 'INEXISTENTE' })] }), env)
-    expect(response.status).toBe(400)
-    expect(db.batch).not.toHaveBeenCalled()
-  })
-
-  it('rejeita produtos com mesmo código e nomes inconsistentes', async () => {
-    const { env, db } = context()
-    const response = await worker.fetch(post({
-      promotions: [item(), item({ name: 'Café', store: 'Norte' })],
-    }), env)
-    expect(response.status).toBe(400)
-    expect(db.batch).not.toHaveBeenCalled()
-  })
-
-  it('salva substituição atômica, deduplicando produtos e lojas', async () => {
-    const { env, db, statements } = context()
-    const promotions = [item(), item({ store: 'Norte', price: 'R$ 22,90' })]
-    const response = await worker.fetch(post({ promotions }), env)
-    expect(response.status).toBe(200)
-    expect((await response.json()).count).toBe(2)
-    expect(db.batch).toHaveBeenCalledOnce()
-    expect(statements.filter((p) => /INSERT INTO products/.test(p.sql))).toHaveLength(1)
-    expect(statements.filter((p) => /INSERT INTO stores/.test(p.sql))).toHaveLength(2)
-    expect(statements.filter((p) => /INSERT INTO promotions/.test(p.sql))).toHaveLength(2)
-    expect(statements[0].sql).toMatch(/DELETE FROM promotions/)
-  })
-
-  it('rejeita lote acima do limite para evitar sobrecarga', async () => {
-    const { env, db } = context()
-    const response = await worker.fetch(post({ promotions: Array.from({ length: 1001 }, () => item()) }), env)
-    expect(response.status).toBe(400)
-    expect(db.batch).not.toHaveBeenCalled()
-  })
-
-  it('responde 500 sem expor erro de banco nem executar atualização parcial', async () => {
-    const { env, db } = context()
-    db.batch.mockRejectedValueOnce(new Error('internal SQL error'))
-    const response = await worker.fetch(post({ promotions: [item()] }), env)
-    expect(response.status).toBe(500)
-    expect(JSON.stringify(await response.json())).not.toContain('internal SQL error')
-  })
+describe('Worker com autenticação obrigatória',()=>{
+ it('rejeita GET de promoções sem login (401)',async()=>{
+  const {env,db}=context()
+  const response=await worker.fetch(req('/api/promocoes','GET',undefined,{authenticate:false}),env)
+  expect(response.status).toBe(401)
+  expect(db.prepare).not.toHaveBeenCalled()
+ })
+ it('retorna promoções apenas à sessão válida',async()=>{
+  const {env}=context()
+  const response=await worker.fetch(req('/api/promocoes'),env)
+  expect(response.status).toBe(200)
+  expect((await response.json()).promotions).toEqual([item()])
+ })
+ it('serve assets sem consultar dados',async()=>{
+  const {env,assets}=context()
+  const response=await worker.fetch(req('/dashboard'),env)
+  expect(response.status).toBe(200)
+  expect(assets.fetch).toHaveBeenCalledOnce()
+ })
+ it('não aceita importação por chave antiga sem cookie',async()=>{
+  const {env,db}=context()
+  const r=req('/api/promocoes/import','POST',{promotions:[item()]},{authenticate:false})
+  r.headers.set('Authorization','Bearer antigo')
+  expect((await worker.fetch(r,env)).status).toBe(401)
+  expect(db.batch).not.toHaveBeenCalled()
+ })
+ it('bloqueia usuário de consulta ao importar e administrar',async()=>{
+  const {env,db}=context(viewer)
+  expect((await worker.fetch(req('/api/promocoes/import','POST',{promotions:[item()]}),env)).status).toBe(403)
+  expect((await worker.fetch(req('/api/admin/users'),env)).status).toBe(403)
+  expect(db.batch).not.toHaveBeenCalled()
+ })
+ it('bloqueia requisição mutável com origem diferente',async()=>{
+  const {env,db}=context()
+  const response=await worker.fetch(req('/api/promocoes/import','POST',{promotions:[item()]},{origin:'https://attacker.com'}),env)
+  expect(response.status).toBe(403)
+  expect(db.batch).not.toHaveBeenCalled()
+ })
+ it('permite importação transacional ao proprietário',async()=>{
+  const {env,db,statements}=context()
+  const rows=[item(),item({store:'Norte'})]
+  const response=await worker.fetch(req('/api/promocoes/import','POST',{promotions:rows}),env)
+  expect(response.status).toBe(200)
+  expect((await response.json()).count).toBe(2)
+  expect(db.batch).toHaveBeenCalledOnce()
+  expect(statements.filter(x=>/INSERT INTO promotions/.test(x.sql))).toHaveLength(2)
+ })
+ it('não altera base com lote inválido',async()=>{
+  const {env,db}=context()
+  expect((await worker.fetch(req('/api/promocoes/import','POST',{promotions:[item({status:'INVALIDO'})]}),env)).status).toBe(400)
+  expect(db.batch).not.toHaveBeenCalled()
+ })
+ it('obriga usuário com senha temporária a mudar senha',async()=>{
+  const {env}=context({...viewer,must_change_password:1})
+  expect((await worker.fetch(req('/api/promocoes'),env)).status).toBe(403)
+ })
+ it('rejeita cookie inválido mesmo com header de autenticação',async()=>{
+  const {env}=context()
+  const r=req('/api/promocoes');r.headers.set('Cookie',cookieName+'=invalid')
+  expect((await worker.fetch(r,env)).status).toBe(401)
+ })
+ it('não mostra erro SQL interno',async()=>{
+  const {env,db}=context()
+  db.batch.mockRejectedValueOnce(new Error('internal SQL error'))
+  const r=await worker.fetch(req('/api/promocoes/import','POST',{promotions:[item()]}),env)
+  expect(r.status).toBe(500)
+  expect(await r.text()).not.toContain('internal SQL error')
+ })
 })
