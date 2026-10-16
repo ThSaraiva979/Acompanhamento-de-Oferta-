@@ -23,4 +23,23 @@ try {
  console.log('POST /api/promocoes/import (old key): HTTP '+resp.status)
  if(resp.status!==401)failed=true
 }catch(err){console.error('Old key test',err);failed=true}
+for(const test of [
+ {path:'/api/auth/me',cookie:'__Host-ao_session='+'c'.repeat(64),expected:401},
+]) {
+ try {
+  const response=await fetch(site+test.path,{headers:{Cookie:test.cookie}})
+  console.log('GET '+test.path+' forged cookie: '+response.status)
+  if(response.status!==test.expected)failed=true
+ }catch(err){console.error(err);failed=true}
+}
+for(const test of [
+ {path:'/api/auth/login',origin:'https://attacker.example',body:{username:'Thiago Saraiva',password:'any'},expected:403},
+ {path:'/api/auth/activate-owner',origin:site,body:{code:'invalid',password:'SenhaSegura12345!'},expected:400},
+]) {
+ try {
+  const response=await fetch(site+test.path,{method:'POST',headers:{Origin:test.origin,'Content-Type':'application/json'},body:JSON.stringify(test.body)})
+  console.log('POST '+test.path+' security: '+response.status)
+  if(response.status!==test.expected)failed=true
+ }catch(err){console.error(err);failed=true}
+}
 if(failed)process.exitCode=1
